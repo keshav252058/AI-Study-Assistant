@@ -1,163 +1,335 @@
+import csv
+from datetime import datetime
+from pathlib import Path
+
 import streamlit as st
+
+from agent import (
+    create_study_plan,
+    ask_ai,
+    generate_personalized_plan
+)
+
+
+# -----------------------------
+# PAGE CONFIGURATION
+# -----------------------------
+
 st.set_page_config(
     page_title="AI Study Assistant",
     page_icon="📚",
     layout="centered"
 )
-import csv
-from datetime import datetime
-st.markdown("""
-<style>
-.stApp {
-    background-color: #f5f7fb;
-    color: #1f2937;
-}
 
-h1, h2, h3, p, label, .stMarkdown {
-    color: #1f2937 !important;
-}
+st.title("📚 AI Study Assistant")
+st.write(
+    "Create study plans, track your progress, "
+    "and get help from your local AI assistant."
+)
 
-.stTextInput label,
-.stNumberInput label {
-    color: #1f2937 !important;
-}
+st.divider()
 
-.stTextInput input,
-.stNumberInput input {
-    background-color: white !important;
-    color: #1f2937 !important;
-}
 
-.stButton > button {
-    background-color: #2563eb;
-    color: white !important;
-    border-radius: 8px;
-    border: none;
-    padding: 10px 20px;
-}
+# -----------------------------
+# PROGRESS FILE
+# -----------------------------
 
-.stButton > button:hover {
-    background-color: #1d4ed8;
-    color: white !important;
-}
-</style>
-""", unsafe_allow_html=True)
-st.title("AI Study Assistant")
-st.write("Your personal study planner")
+PROGRESS_FILE = Path(__file__).parent / "study_progress.csv"
 
-name = st.text_input("Enter your name")
-subject = st.text_input("Which subject do you want to study?")
-goal = st.text_input("What is your study goal?")
 
-study_time = st.number_input(
-    "How many hours can you study today?",
+def save_progress(subject, goal, tasks, completed_tasks):
+    """Save study tasks and their status to a CSV file."""
+
+    file_exists = PROGRESS_FILE.exists()
+
+    with open(
+        PROGRESS_FILE,
+        "a",
+        newline="",
+        encoding="utf-8"
+    ) as file:
+
+        writer = csv.writer(file)
+
+        if not file_exists:
+            writer.writerow([
+                "date",
+                "subject",
+                "goal",
+                "task",
+                "status"
+            ])
+
+        saved_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        for index, task in enumerate(tasks):
+            status = (
+                "Completed"
+                if index in completed_tasks
+                else "Pending"
+            )
+
+            writer.writerow([
+                saved_at,
+                subject,
+                goal,
+                task,
+                status
+            ])
+
+
+def load_progress():
+    """Read saved progress records from CSV."""
+
+    if not PROGRESS_FILE.exists():
+        return []
+
+    with open(
+        PROGRESS_FILE,
+        "r",
+        newline="",
+        encoding="utf-8"
+    ) as file:
+
+        reader = csv.DictReader(file)
+        return list(reader)
+
+
+# -----------------------------
+# STUDENT DETAILS
+# -----------------------------
+
+st.header("📝 Create Your Study Plan")
+
+name = st.text_input(
+    "Your name",
+    placeholder="Enter your name"
+)
+
+subject = st.text_input(
+    "Subject",
+    placeholder="Example: Python"
+)
+
+goal = st.text_input(
+    "Your study goal",
+    placeholder="Example: Learn Python loops"
+)
+
+study_hours = st.number_input(
+    "Study hours per day",
     min_value=1,
     max_value=12,
     value=2
 )
 
-if "show_plan" not in st.session_state:
-    st.session_state.show_plan = False
+
+# -----------------------------
+# BASIC STUDY PLAN
+# -----------------------------
 
 if st.button("Generate Study Plan"):
-    st.session_state.show_plan = True
 
-if st.session_state.show_plan:
-    if name and subject and goal:
-        st.success(f"Hello {name}! Here is your study plan:")
+    if not subject.strip() or not goal.strip():
+        st.warning("Please enter your subject and study goal.")
 
-        st.write(f"**Subject:** {subject}")
-        st.write(f"**Goal:** {goal}")
-        st.write(f"**Available time:** {study_time} hours")
-        if subject.lower() == "python":
-                st.info("Tip: Learn one concept, write a small program, and practice it.")
-        elif subject.lower() == "java":
-            st.info("Tip: Revise OOP concepts and practice small Java programs.")
-        elif subject.lower() in ["ds", "data structures"]:
-            st.info("Tip: Understand one data structure and solve a few practice questions.")
-        else:
-            st.info("Tip: Break your topic into small parts, revise, and practice questions.")
-        if study_time <= 1:
-         st.info("Focus on one important topic today.")
-        elif study_time <= 3:
-            st.info("Study one topic and practice questions.")
-        else:
-            st.info("Divide your time between learning, revision, and practice.")
-            st.subheader("Your Daily Timetable")
-
-        for hour in range(1, study_time + 1):
-            if hour == 1:
-                activity = "Learn a new topic"
-            elif hour == 2:
-                activity = "Practice questions"
-            elif hour == 3:
-                activity = "Revise what you learned"
-            else:
-                activity = "Solve questions and review mistakes"
-
-            st.write(f"Hour {hour}: {activity}")
-        tasks = [
-            "Revise the basics of " + subject,
-            "Work on your goal: " + goal,
-            "Practice questions related to " + subject,
-            "Review what you learned today"
-        ]
-        if st.button("Reset Plan"):
-            st.session_state.show_plan = False
-            st.rerun()
-        st.subheader("Your Tasks")
-
-        completed = 0
-
-        for i, task in enumerate(tasks):
-            if st.checkbox(task, key=f"task_{i}"):
-                completed += 1
-
-        progress = completed / len(tasks)
-
-        st.progress(progress)
-        st.write(f"Completed: {completed} / {len(tasks)} tasks")
-    try:
-        with open("study_progress.csv", "rb") as file:
-                csv_data = file.read()
-
-        st.download_button(
-                label="Download My Progress CSV",
-                data=csv_data,
-                file_name="study_progress.csv",
-                mime="text/csv"
-            )
-    except FileNotFoundError:
-            st.info("Save your progress first to download it.")
-    st.subheader("Saved Study History")
-
-    try:
-            with open("study_progress.csv", "r", newline="") as file:
-                reader = csv.reader(file)
-                history = list(reader)
-
-            if history:
-                for record in history:
-                    st.write(
-                        f"Date: {record[0]} | Subject: {record[2]} | "
-                        f"Completed: {record[3]}/{record[4]}"
-                    )
-            else:
-                st.info("No saved progress yet.")
-
-    except FileNotFoundError:
-            st.info("Save your progress first to see your history.")
-    if st.button("Save My Progress"):
-            with open("study_progress.csv", "a", newline="") as file:
-                writer = csv.writer(file)
-                writer.writerow([
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    name,
-                    subject,
-                    completed,
-                    len(tasks)
-                ])
-
-            st.success("Your progress has been saved!")
     else:
-        st.warning("Please fill in your name, subject, and goal.")
+        plan = create_study_plan(
+            subject,
+            goal,
+            study_hours
+        )
+
+        st.session_state["study_plan"] = plan
+        st.session_state["completed_tasks"] = []
+
+        st.success(
+            f"Study plan created for {name or 'Student'}!"
+        )
+
+
+# -----------------------------
+# DISPLAY TASKS AND PROGRESS
+# -----------------------------
+
+if "study_plan" in st.session_state:
+
+    plan = st.session_state["study_plan"]
+    tasks = plan["tasks"]
+
+    st.subheader(f"📌 Your {plan['subject']} Tasks")
+
+    completed_tasks = st.session_state["completed_tasks"]
+
+    for index, task in enumerate(tasks):
+
+        checked = st.checkbox(
+            task,
+            value=index in completed_tasks,
+            key=f"task_{index}"
+        )
+
+        if checked and index not in completed_tasks:
+            completed_tasks.append(index)
+
+        elif not checked and index in completed_tasks:
+            completed_tasks.remove(index)
+
+    progress = len(completed_tasks) / len(tasks)
+
+    st.progress(progress)
+
+    st.write(
+        f"Progress: {len(completed_tasks)} of "
+        f"{len(tasks)} tasks completed"
+    )
+
+    # Save progress button
+    if st.button("💾 Save Study Progress"):
+
+        save_progress(
+            plan["subject"],
+            plan["goal"],
+            tasks,
+            completed_tasks
+        )
+
+        st.success("Your study progress has been saved!")
+
+
+st.divider()
+
+
+# -----------------------------
+# PERSONALIZED AI STUDY PLAN
+# -----------------------------
+
+st.header("🧠 Personalized AI Study Plan")
+
+st.write(
+    "Generate a study timetable based on your subject, "
+    "goal, and available study hours."
+)
+
+if st.button("Create AI Study Plan"):
+
+    if not subject.strip() or not goal.strip():
+
+        st.warning("Please enter your subject and study goal above.")
+
+    else:
+
+        with st.spinner("AI is creating your personalized plan..."):
+
+            try:
+                ai_plan = generate_personalized_plan(
+                    subject,
+                    goal,
+                    study_hours
+                )
+
+                st.session_state["ai_plan"] = ai_plan
+
+            except Exception as error:
+                st.error(
+                    "Could not generate the AI study plan. "
+                    "Please check that Ollama is running."
+                )
+                st.caption(str(error))
+
+
+if "ai_plan" in st.session_state:
+
+    st.subheader("Your AI-Generated Plan")
+    st.markdown(st.session_state["ai_plan"])
+
+
+st.divider()
+
+
+# -----------------------------
+# ASK AI
+# -----------------------------
+
+st.header("🤖 Ask Your AI Study Assistant")
+
+question = st.text_area(
+    "Enter your study question",
+    placeholder="Example: Explain Python loops with an example."
+)
+
+if st.button("Ask AI"):
+
+    if not question.strip():
+
+        st.warning("Please enter a question.")
+
+    else:
+
+        with st.spinner("AI is thinking..."):
+
+            try:
+                answer = ask_ai(question)
+
+                st.session_state["last_question"] = question
+                st.session_state["last_answer"] = answer
+
+            except Exception as error:
+
+                st.error(
+                    "Could not connect to Ollama. "
+                    "Please make sure Ollama is running."
+                )
+
+                st.caption(str(error))
+
+
+if "last_answer" in st.session_state:
+
+    st.subheader("AI Answer")
+    st.markdown(st.session_state["last_answer"])
+
+
+st.divider()
+
+
+# -----------------------------
+# SAVED STUDY HISTORY
+# -----------------------------
+
+st.header("📊 Saved Study History")
+
+history = load_progress()
+
+if history:
+
+    st.write(f"Total saved task records: {len(history)}")
+
+    st.dataframe(
+        history,
+        use_container_width=True,
+        hide_index=True
+    )
+
+    csv_data = PROGRESS_FILE.read_bytes()
+
+    st.download_button(
+        label="⬇️ Download Study History CSV",
+        data=csv_data,
+        file_name="study_progress.csv",
+        mime="text/csv"
+    )
+
+else:
+
+    st.info(
+        "No saved study history yet. "
+        "Generate a study plan and click Save Study Progress."
+    )
+
+
+st.divider()
+
+st.caption(
+    "Powered by Python, Streamlit, and Ollama running locally."
+)
