@@ -307,7 +307,7 @@ if history:
 
     st.dataframe(
         history,
-        use_container_width=True,
+        width="stretch",
         hide_index=True
     )
 
